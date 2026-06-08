@@ -6,8 +6,9 @@ from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
 )
-from peft import LoraConfig, get_peft_model
+from peft import get_peft_model
 from Gsm8k import Gsm8k
+from settings import COMMON, GRPO_CONFIG, LORA
 
 from trl import (
     SFTTrainer,
@@ -22,25 +23,11 @@ from trl import (
     RewardConfig,
 )
 
-
-COMMON = dict(
-    per_device_train_batch_size=4,
-    gradient_accumulation_steps=16,
-    gradient_checkpointing=True,
-    learning_rate=2e-5,
-    num_train_epochs=1,
-    logging_steps=10,
-    save_steps=500,
-    bf16=True,
-)
-
-
-LORA = LoraConfig(
-    r=16,
-    lora_alpha=32,
-    lora_dropout=0.05,
-    target_modules="all-linear",
-    task_type="CAUSAL_LM",
+from rewards import (
+    match_format_exactly,         # Perfect structure compliance
+    match_format_approximately,   # Partial format credit
+    check_answer_correctness,     # Mathematical accuracy
+    check_numbers_extraction,
 )
 
 
@@ -48,8 +35,8 @@ def resolve_output_dir(cli_args):
     if cli_args.output_dir:
         out = cli_args.output_dir
     else:
-        run_name = cli_args.run_name or f"{cli_args.method}_{cli_args.task}"
-        out = os.path.join(cli_args.output_root, run_name)
+        run_name = cli_args.run_name or f"{cli_args.method}_gsm8k"
+        out = os.path.join("outputs", run_name)
 
     if os.path.exists(out):
         out = f"{out}-{int(time.time())}"
@@ -59,12 +46,18 @@ def resolve_output_dir(cli_args):
 
 
 def get_model_and_tokenizer(model_name):
-    tok = AutoTokenizer.from_pretrained(model_name)
-    tok.pad_token = tok.eos_token
+    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    
+    # GRPO does left-padding for generation.
+    tokenizer.padding_side = "left"
+    tokenizer.truncation_side = "left"
+
     model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto")
     model = get_peft_model(model, LORA)
     model.print_trainable_parameters()
-    return model, tok
+    return model, tokenizer
 
 
 def save_adapter(trainer, label):
@@ -86,14 +79,35 @@ def run_sft(model, task, tok, cli_args):
 
 
 def run_grpo(model, task, tok, cli_args):
-    ds = task.load_dataset()
-    ds = ds.rename_column("text", "prompt")  # GRPO formatting
-    common = dict(COMMON, output_dir=cli_args.output_dir)
+    # IMPORTANT: use raw GSM8K rows (question/answer) so we keep the '####' final-answer delimiter.
+    ds = task.load_grpo_dataset()
+    ds = task.convert_to_grpo(ds)
+
+    # Sanity-check: if prompt is conversational (list of {role, content}), TRL will try to apply a chat template.
+    # We want plain strings for GSM8K to avoid `tokenizer.chat_template` entirely.
+    if len(ds) > 0:
+        assert isinstance(ds[0]["prompt"], str), f"Expected ds['prompt'] to be str, got {type(ds[0]['prompt'])}"
+
+    # Catch missing gold answers early.
+    sample_n = min(20, len(ds))
+    if sample_n:
+        assert all(x["answer"] is not None for x in ds.select(range(sample_n))), (
+            "answer=None found in first rows — check GSM8K '####' extraction in grpo_processing"
+        )
+
+    common = dict(GRPO_CONFIG, output_dir=cli_args.output_dir)
+
     trainer = GRPOTrainer(
-        model=model,
-        reward_funcs=[task.reward_function],
-        train_dataset=ds,
+        model=model,  # LoRA-adapted model
+        processing_class=tok,  # IMPORTANT: plain tokenizer (no chat template needed)
+        reward_funcs=[
+            match_format_exactly,
+            match_format_approximately,
+            check_answer_correctness,
+            check_numbers_extraction,
+        ],
         args=GRPOConfig(**common),
+        train_dataset=ds,
     )
     trainer.train()
     save_adapter(trainer, "grpo")

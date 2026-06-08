@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH -J dpo_hellaswag
+#SBATCH -J grpo_gsm8k
 #SBATCH -A MLMI-ae581-SL2-GPU
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -23,7 +23,7 @@ source ./trl/trl-venv/bin/activate
 
 echo Training model
 
-python3 trainer.py --method dpo --task hellaswag
+python3 trainer.py --method grpo 
 
 
 
