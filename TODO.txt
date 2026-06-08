@@ -1,25 +1,14 @@
-source trl/trl-venv/bin/activate
 
 sintr -A MLMI-$USER-SL2-GPU -p ampere --gres=gpu:1 -N1 -n1 --qos=INTR -t 1:00:00
 
 
 module load python/3.11.0-icl
-
-
-eval-venv and LLM-eval-harness requires python/3.11.0-icl
-likewise for distillation
-
-
-pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu132
+source trl/trl-venv/bin/activate
 
 
 
-
-
-
-Pythia-12b-v0 PIQA benchmark using harness: 
-hf ({'pretrained': 'EleutherAI/pythia-12b-v0'}), gen_kwargs: ({}), limit: None, num_fewshot: None, batch_size: 8
-|Tasks|Version|Filter|n-shot| Metric |   |Value |   |Stderr|
-|-----|------:|------|-----:|--------|---|-----:|---|-----:|
-|piqa |      1|none  |     0|acc     |↑  |0.7606|±  |0.0100|
-|     |       |none  |     0|acc_norm|↑  |0.7699|±  |0.0098|
+TODO
+- Git push
+- Refactor/redo GSM8K class
+- Add BLIMP eval (check harness)
+- Implement GRPO from notebook (includes metrics)
