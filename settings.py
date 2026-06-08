@@ -21,14 +21,14 @@ GRPO_CONFIG = dict(
     gradient_accumulation_steps=8,  # Effective batch size = 2 * 8 = 16
 
     # Sequence length limits for mathematical problems
-    # max_prompt_length=1024,  # cap prompt length (left-truncate if needed)
     max_completion_length=512,  # room for step-by-step reasoning
 
     # Training duration and monitoring
-    max_steps=200,  # increase to 2k-20k for a real run
+    max_steps=500,  # increase further (2k-20k) for a full run
     logging_steps=1,  # log metrics every step for close monitoring
 
     # Stability and output configuration
+    bf16=True,  # mixed precision
     max_grad_norm=0.1,  # aggressive gradient clipping for stable training
 )
 

@@ -24,10 +24,9 @@ from trl import (
 )
 
 from rewards import (
-    match_format_exactly,         # Perfect structure compliance
-    match_format_approximately,   # Partial format credit
+    match_format_exactly,         # \boxed{} format compliance
     check_answer_correctness,     # Mathematical accuracy
-    check_numbers_extraction,
+    check_numbers_extraction,     # Fallback number extraction
 )
 
 
@@ -83,11 +82,6 @@ def run_grpo(model, task, tok, cli_args):
     ds = task.load_grpo_dataset()
     ds = task.convert_to_grpo(ds)
 
-    # Sanity-check: if prompt is conversational (list of {role, content}), TRL will try to apply a chat template.
-    # We want plain strings for GSM8K to avoid `tokenizer.chat_template` entirely.
-    if len(ds) > 0:
-        assert isinstance(ds[0]["prompt"], str), f"Expected ds['prompt'] to be str, got {type(ds[0]['prompt'])}"
-
     # Catch missing gold answers early.
     sample_n = min(20, len(ds))
     if sample_n:
@@ -99,10 +93,9 @@ def run_grpo(model, task, tok, cli_args):
 
     trainer = GRPOTrainer(
         model=model,  # LoRA-adapted model
-        processing_class=tok,  # IMPORTANT: plain tokenizer (no chat template needed)
+        processing_class=tok,  # tokenizer (chat template applied automatically)
         reward_funcs=[
             match_format_exactly,
-            match_format_approximately,
             check_answer_correctness,
             check_numbers_extraction,
         ],
@@ -166,7 +159,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--method", choices=list(METHODS), default="grpo")
 parser.add_argument(
     "--model",
-    default="EleutherAI/pythia-12b-deduped",
+    default="Qwen/Qwen2.5-3B-Instruct",
 )
 parser.add_argument(
     "--run_name",

@@ -100,7 +100,7 @@ class Gsm8k:
 
     @staticmethod
     def grpo_processing(x):
-        """Convert GSM8K example to GRPO format: {prompt: str, question: str, answer: str}."""
+        """Convert GSM8K example to GRPO format with chat-style prompt."""
 
         def extract_hash_answer(text):
             """Extract numerical answer from GSM8K format (#### marker)"""
@@ -123,12 +123,15 @@ class Gsm8k:
             raise KeyError(f"GSM8K GRPO processing expected keys 'question'/'answer' or 'text', got: {list(x.keys())}")
 
         answer = extract_hash_answer(answer_text)
-        
 
-        prompt = f"{system_prompt}\n\n{question}\n"
+        # Chat-format prompt — TRL applies the tokenizer's chat template automatically.
+        prompt = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": question},
+        ]
 
         return {
-            "prompt": prompt,  # plain string prompt
+            "prompt": prompt,  # chat-format for instruct models
             "question": question,  # for debugging/logging
             "answer": answer,  # gold final answer for reward functions
         }
