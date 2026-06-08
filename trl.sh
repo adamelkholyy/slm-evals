@@ -4,7 +4,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
-#SBATCH --time=03:00:00
+#SBATCH --time=09:00:00
 #SBATCH --mail-type=ALL
 #SBATCH -p ampere
 #SBATCH --output=logs/%x.out   						    # submit script's standard-out
@@ -23,7 +23,7 @@ source ./trl/trl-venv/bin/activate
 
 echo Training model
 
-python3 trainer.py --method grpo 
+python3 trainer.py --method grpo --run_name grpo_qwen3b
 
 
 

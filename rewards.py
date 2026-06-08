@@ -2,34 +2,52 @@ import re
 
 from utils import get_completion_text, maybe_debug_print_grpo, maybe_log_extra_grpo
 
-# System prompt — kept minimal so the instruct model uses its own reasoning style.
-# \boxed{} is a format these models already know from math pre-training data.
+# System prompt — keep it short to reduce "answer then keep talking" behaviour.
+# We encourage the model to *end* with the GSM8K-style final answer marker.
 system_prompt = (
-    "You are a helpful assistant. Solve the following math problem step by step. "
-    "Provide your final numerical answer inside \\boxed{}."
+    "Show your working. End your response with a final line of the form: #### <answer>"
 )
 
-# Regex to extract the content of \boxed{...}  (last occurrence wins)
-match_boxed = re.compile(r"\\boxed\{([^}]*)\}")
+# Regex to extract the content after a GSM8K-style final marker.
+# We prefer the last occurrence to handle "correct answer then hallucinate" cases.
+match_hash_any = re.compile(r"####\s*([-+]?\d[\d,\.]*)")
+match_hash_endline = re.compile(r"####\s*([-+]?\d[\d,\.]*)\s*$", re.MULTILINE)
 
 # Fallback: grab the last number anywhere in the response
 match_last_number = re.compile(r"([\d][\d,.]*)\s*$", re.MULTILINE)
 
-# Reward Function 1: Format Compliance (\boxed{} present?)
+
+# Reward Function 1: Format Compliance (#### <answer>)
 def match_format_exactly(completions, **kwargs):
-    """
-    Reward for including \\boxed{} in the response.
-    2.0 if present, 0.0 otherwise.
+    """Reward for including a GSM8K-style final marker.
+
+    - 2.0 if a line ends with: #### <number>
+    - 1.0 if it contains: #### <number> somewhere
+    - 0.0 otherwise
     """
     scores = []
     for completion in completions:
         response = get_completion_text(completion)
-        score = 2.0 if match_boxed.search(response) is not None else 0.0
-        scores.append(score)
+        if match_hash_endline.search(response) is not None:
+            scores.append(2.0)
+        elif match_hash_any.search(response) is not None:
+            scores.append(1.0)
+        else:
+            scores.append(0.0)
     return scores
 
 
-# Reward Function 2: Mathematical Accuracy (extract from \boxed{})
+def _extract_hash_answer(text: str) -> str | None:
+    """Extract the last '#### <answer>' occurrence from a completion."""
+    matches = match_hash_any.findall(text)
+    return matches[-1].strip() if matches else None
+
+
+def _clean_number_str(s: str) -> str:
+    return s.replace(",", "").strip()
+
+
+# Reward Function 2: Mathematical Accuracy (extract from ####)
 def check_answer_correctness(prompts, completions, answer, **kwargs):
     """
     Graduated scoring for mathematical accuracy:
@@ -40,21 +58,16 @@ def check_answer_correctness(prompts, completions, answer, **kwargs):
     """
     responses = [get_completion_text(completion) for completion in completions]
 
-    def _extract_boxed(r: str) -> str | None:
-        matches = match_boxed.findall(r)
-        return matches[-1].strip() if matches else None  # last \boxed{} wins
-
-    extracted_responses = [_extract_boxed(r) for r in responses]
+    extracted_responses = [_extract_hash_answer(r) for r in responses]
 
     scores = []
     for guess, true_answer in zip(extracted_responses, answer):
         if guess is None or true_answer is None:  # No extractable answer / no GT
             scores.append(0)
             continue
-            
-        # Normalise: strip commas and whitespace
-        guess_clean = guess.replace(",", "").strip()
-        true_clean = str(true_answer).replace(",", "").strip()
+
+        guess_clean = _clean_number_str(guess)
+        true_clean = _clean_number_str(str(true_answer))
 
         # Exact string match gets full points
         if guess_clean == true_clean:
@@ -95,10 +108,10 @@ def check_answer_correctness(prompts, completions, answer, **kwargs):
 
 # Reward Function 3: Fallback Number Extraction
 def check_numbers_extraction(prompts, completions, answer, **kwargs):
-    """
-    Fallback extractor: finds the last number in the response (ignoring \\boxed{}).
+    """Fallback extractor: finds the last number in the response.
+
     Gives partial credit (1.5) if it matches the gold answer, even when the model
-    forgot to use \\boxed{}.
+    forgot to emit the final marker: #### <answer>.
     """
     responses = [get_completion_text(completion) for completion in completions]
 

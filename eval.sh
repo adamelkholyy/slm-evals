@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH -J kto_gsm8k_eval
+#SBATCH -J qwen_blimp_eval
 #SBATCH -A MLMI-ae581-SL2-GPU
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -20,39 +20,14 @@ source ./trl/trl-venv/bin/activate
 
 cd /rds/user/ae581/hpc-work/diss
 
-echo Evaluating model...
+echo Evaluating base Qwen2.5-3B-Instruct on BLiMP...
 
-NAME="pythia-12b-deduped-v0"
-
-# lm_eval --model hf \
-#     --model_args pretrained=EleutherAI/$NAME \
-#     --tasks piqa \
-#     --device cuda:0 \
-#     --batch_size 8 \
-#     --output_path results
-
-# Base model
-# lm_eval --model hf \
-#   --model_args pretrained=EleutherAI/pythia-12b-deduped \
-#   --tasks gsm8k \
-#   --output_path ./results/base
-
-# # Fine-tuned
-# lm_eval --model hf \
-#   --model_args pretrained=EleutherAI/pythia-12b-deduped,peft=./outputs/checkpoint-<N> \
-#   --tasks gsm8k \
-#   --output_path ./results/finetuned
-
-
-# arc 36
-# gsm8k 117
-# piqa 7000
-
-python eval.py \
-    --base EleutherAI/pythia-12b-deduped \
-    --finetuned ./outputs/kto_gsm8k/checkpoint-117 \
-    --tasks gsm8k \
-    --n_samples 999999
+lm_eval --model hf \
+    --model_args pretrained=Qwen/Qwen2.5-3B-Instruct,trust_remote_code=True \
+    --tasks blimp \
+    --device cuda:0 \
+    --batch_size 8 \
+    --output_path ./results/qwen3b_base_blimp
 
 echo Job complete
 

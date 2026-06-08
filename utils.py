@@ -1,7 +1,13 @@
 import re
 import sys
 from typing import Any, Tuple
-
+from settings import (
+    DEBUG_EVERY,
+    DEBUG_N,
+    DEBUG_PROMPT_CHARS,
+    DEBUG_COMPLETION_CHARS,
+    DEBUG_SHOW_FULL_PROMPT
+)
 
 def split(text: str) -> Tuple[str, str]:
 
@@ -66,12 +72,6 @@ def get_completion_text(completion: Any) -> str:
 
 
 
-# Debug configuration
-DEBUG_EVERY = 10           # print debug info every N steps
-DEBUG_N = 1                # number of samples to print per debug step
-DEBUG_PROMPT_CHARS = 800   # max chars to show for prompts
-DEBUG_COMPLETION_CHARS = 1200  # max chars to show for completions
-DEBUG_SHOW_FULL_PROMPT = False  # whether to show the full prompt untruncated
 
 _LAST_DEBUG_STEP: int | None = None
 

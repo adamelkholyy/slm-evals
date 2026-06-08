@@ -12,7 +12,7 @@ class Gsm8k:
     def load_dataset(self) -> Dataset:
         ds = self.load_raw_dataset_split("train")
         cols_to_remove = [c for c in ds.column_names if c != "text"]
-        return ds.map(self.format_gsm8k, remove_columns=cols_to_remove)
+        return ds.map(self.format_gsm8k, remove_columns=cols_to_remove, load_from_cache_file=False)
 
     def load_grpo_dataset(self) -> Dataset:
         """Raw GSM8K rows for GRPO.
@@ -26,7 +26,7 @@ class Gsm8k:
     def load_dataset_split(self, split_name: str) -> Dataset:
         ds = self.load_raw_dataset_split(split_name)
         cols_to_remove = [c for c in ds.column_names if c != "text"]
-        return ds.map(self.format_gsm8k, remove_columns=cols_to_remove)
+        return ds.map(self.format_gsm8k, remove_columns=cols_to_remove, load_from_cache_file=False)
 
     def load_val_split(self) -> Dataset:
         return self.load_dataset_split("test")
@@ -58,7 +58,7 @@ class Gsm8k:
             rejected = self.get_negative_example(x, answer)
             return {"prompt": prompt, "chosen": answer, "rejected": rejected}
 
-        return ds.map(mk, remove_columns=ds.column_names)
+        return ds.map(mk, remove_columns=ds.column_names, load_from_cache_file=False)
 
     def convert_to_reward(self, ds: Dataset, tok) -> Dataset:
         """Convert into RewardTrainer format (tokenized chosen/rejected pairs)."""
@@ -74,7 +74,7 @@ class Gsm8k:
                 "attention_mask_rejected": rejected["attention_mask"],
             }
 
-        return ds.map(mk, remove_columns=ds.column_names)
+        return ds.map(mk, remove_columns=ds.column_names, load_from_cache_file=False)
 
     def convert_to_kto(self, ds: Dataset) -> Dataset:
         """Convert into KTO format (prompt, completion, label)."""
@@ -87,11 +87,11 @@ class Gsm8k:
 
 
     def convert_to_grpo(self, ds: Dataset) -> Dataset:
-        ds = ds.map(self.grpo_processing, remove_columns=ds.column_names)
+        ds = ds.map(self.grpo_processing, remove_columns=ds.column_names, load_from_cache_file=False)
 
         # Drop rows with no extractable gold final answer.
         before_count = len(ds)
-        ds = ds.filter(lambda x: x["answer"] is not None)
+        ds = ds.filter(lambda x: x["answer"] is not None, load_from_cache_file=False)
         dropped = before_count - len(ds)
         if dropped:
             print(f"[GSM8K] Warning: dropped {dropped} rows with answer=None (failed '####' extraction)")
@@ -124,14 +124,11 @@ class Gsm8k:
 
         answer = extract_hash_answer(answer_text)
 
-        # Chat-format prompt — TRL applies the tokenizer's chat template automatically.
-        prompt = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": question},
-        ]
+        # Plain-text prompt (no chat template)
+        prompt = f"{system_prompt}\n\n{question}\n"
 
         return {
-            "prompt": prompt,  # chat-format for instruct models
+            "prompt": prompt,
             "question": question,  # for debugging/logging
             "answer": answer,  # gold final answer for reward functions
         }
