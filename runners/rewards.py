@@ -1,12 +1,7 @@
 import re
 
-from utils import get_completion_text, maybe_debug_print_grpo, maybe_log_extra_grpo
-
-# System prompt — keep it short to reduce "answer then keep talking" behaviour.
-# We encourage the model to *end* with the GSM8K-style final answer marker.
-system_prompt = (
-    "Show your working. End your response with a final line of the form: #### <answer>"
-)
+from debug import maybe_debug_print_grpo
+from utils import get_completion_text
 
 # Regex to extract the content after a GSM8K-style final marker.
 # We prefer the last occurrence to handle "correct answer then hallucinate" cases.
@@ -76,28 +71,20 @@ def check_answer_correctness(prompts, completions, answer, **kwargs):
             # Try numerical comparison for partial credit
             try:
                 ratio = float(guess_clean) / float(true_clean)
-                if 0.9 <= ratio <= 1.1:      # Within 10%
+                if 0.9 <= ratio <= 1.1:  # Within 10%
                     scores.append(1.5)
-                elif 0.8 <= ratio <= 1.2:    # Within 20%
+                elif 0.8 <= ratio <= 1.2:  # Within 20%
                     scores.append(0.5)
-                else:                         # Wrong answer
+                else:  # Wrong answer
                     scores.append(-0.5)
             except (ValueError, ZeroDivisionError):
-                scores.append(-0.5)           # Invalid numerical format
-
-    # Logging to TRL completions table + periodic stderr printing.
-    maybe_log_extra_grpo(
-        log_extra=kwargs.get("log_extra"),
-        gt_answers=answer,
-        extracted=extracted_responses,
-    )
+                scores.append(-0.5)  # Invalid numerical format
 
     maybe_debug_print_grpo(
         trainer_state=kwargs.get("trainer_state"),
         prompts=prompts,
         responses=responses,
         answers=answer,
-        questions=kwargs.get("question"),
         extracted=extracted_responses,
         scores=scores,
         header="GRPO correctness debug",
@@ -126,7 +113,7 @@ def check_numbers_extraction(prompts, completions, answer, **kwargs):
         if guess is None or true_answer is None:  # No extractable number / no GT
             scores.append(0)
             continue
-            
+
         try:
             true_val = float(str(true_answer).replace(",", "").strip())
             guess_val = float(guess)
@@ -134,5 +121,5 @@ def check_numbers_extraction(prompts, completions, answer, **kwargs):
             scores.append(1.5 if guess_val == true_val else 0.0)
         except (ValueError, TypeError):
             scores.append(0)  # Invalid number format
-    
+
     return scores

@@ -2,12 +2,12 @@
 
 cd /local/scratch/ae581
 
-source ./trl-venv/bin/activate
+source ./trl/trl-venv/bin/activate
 
 
 echo Training model
 
-CUDA_VISIBLE_DEVICES=0 python3 trainer.py --method kto --run_name kto_qwen3b
+CUDA_VISIBLE_DEVICES=0 python3 trainer.py --method grpo --run_name sft_qwen3b
 
 
 
