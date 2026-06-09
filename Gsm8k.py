@@ -1,3 +1,5 @@
+import re
+
 from datasets import Dataset, load_dataset
 from rewards import system_prompt
 from utils import split
@@ -10,9 +12,23 @@ class Gsm8k:
         return load_dataset("openai/gsm8k", "main", split=split_name)
 
     def load_dataset(self) -> Dataset:
+        """Default GSM8K formatted as a single `text` column.
+
+        Used by DPO/KTO/Reward in this codebase.
+        """
         ds = self.load_raw_dataset_split("train")
         cols_to_remove = [c for c in ds.column_names if c != "text"]
         return ds.map(self.format_gsm8k, remove_columns=cols_to_remove, load_from_cache_file=False)
+
+    def load_sft_dataset(self) -> Dataset:
+        """Prompt/completion dataset for SFT.
+
+        We keep prompt and completion separate so we can train *completion-only*
+        with a completion-only data collator.
+        """
+        ds = self.load_raw_dataset_split("train")
+        cols_to_remove = [c for c in ds.column_names if c not in ("prompt", "completion")]
+        return ds.map(self.format_gsm8k_sft, remove_columns=cols_to_remove, load_from_cache_file=False)
 
     def load_grpo_dataset(self) -> Dataset:
         """Raw GSM8K rows for GRPO.
@@ -33,17 +49,64 @@ class Gsm8k:
 
     @staticmethod
     def format_gsm8k(x) -> dict:
-        # Keep the dataset as a single "text" field for SFT-style trainers.
+        # Single text field (useful for trainers that expect `text`).
         return {"text": f"Question: {x['question']}\nAnswer: {x['answer']}"}
+
+    @staticmethod
+    def format_gsm8k_sft(x) -> dict:
+        """Format as prompt/completion for completion-only SFT."""
+        prompt = f"{system_prompt}\n\nQuestion: {x['question']}\nAnswer:"
+        completion = f" {x['answer']}"  # leading space so it tokenises nicely
+        return {"prompt": prompt, "completion": completion}
 
     @staticmethod
     def split_prompt_answer(text: str):
         return split(text)
 
     def get_negative_example(self, x, answer: str) -> str:
-        # Placeholder negative example for DPO/KTO.
-        # (Intentionally dumb: easy to replace later.)
-        return answer[::-1][:80]
+        """Create a well-formed but incorrect completion.
+
+        We keep the gold reasoning text but perturb the final GSM8K marker:
+        '#### <answer>' -> '#### <answer+1>' (or a numeric +1 for floats).
+
+        This yields a harder/realistic negative than string reversal.
+        """
+
+        # Prefer the last occurrence to avoid cases where the model gives an answer then keeps talking.
+        hash_re = re.compile(r"(####\s*)([-+]?\d[\d,\.]*)")
+        matches = list(hash_re.finditer(answer))
+        if matches:
+            m = matches[-1]
+            num_str = m.group(2)
+            clean = num_str.replace(",", "").strip()
+            try:
+                if re.fullmatch(r"[-+]?\d+", clean):
+                    wrong = str(int(clean) + 1)
+                else:
+                    wrong = str(float(clean) + 1.0)
+            except ValueError:
+                wrong = "0"
+
+            start, end = m.span(2)
+            return answer[:start] + wrong + answer[end:]
+
+        # Fallback: try changing the last number anywhere.
+        any_num_re = re.compile(r"[-+]?\d[\d,\.]*(?!.*[-+]?\d)")
+        m2 = any_num_re.search(answer)
+        if m2:
+            num_str = m2.group(0)
+            clean = num_str.replace(",", "").strip()
+            try:
+                if re.fullmatch(r"[-+]?\d+", clean):
+                    wrong = str(int(clean) + 1)
+                else:
+                    wrong = str(float(clean) + 1.0)
+                return answer[: m2.start()] + wrong + answer[m2.end() :]
+            except ValueError:
+                pass
+
+        # Last-resort fallback: append a clearly wrong final line.
+        return answer.rstrip() + "\n#### 0"
 
     @staticmethod
     def reward_function(completions, prompts=None, **kw):
@@ -77,12 +140,25 @@ class Gsm8k:
         return ds.map(mk, remove_columns=ds.column_names, load_from_cache_file=False)
 
     def convert_to_kto(self, ds: Dataset) -> Dataset:
-        """Convert into KTO format (prompt, completion, label)."""
+        """Convert into KTO format (prompt, completion, label).
+
+        Keep prompt formatting consistent with SFT/GRPO:
+          <system_prompt>\n\nQuestion: ...\nAnswer:
+
+        Completions are the GSM8K answer strings (which include the '#### <final>' marker).
+        """
         rows = []
         for x in ds:
-            prompt, answer = self.split_prompt_answer(x["text"])
-            rows.append({"prompt": prompt, "completion": answer, "label": True})
-            rows.append({"prompt": prompt, "completion": self.get_negative_example(x, answer), "label": False})
+            prompt_raw, answer = self.split_prompt_answer(x["text"])
+
+            prompt = f"{system_prompt}\n\n{prompt_raw.strip()}\nAnswer:"
+
+            # Ensure the completion begins with a space (nice tokenization; matches SFT path).
+            completion_pos = answer if answer.startswith(" ") else f" {answer}"
+            completion_neg = self.get_negative_example(x, completion_pos)
+
+            rows.append({"prompt": prompt, "completion": completion_pos, "label": True})
+            rows.append({"prompt": prompt, "completion": completion_neg, "label": False})
         return Dataset.from_list(rows)
 
 
@@ -100,7 +176,7 @@ class Gsm8k:
 
     @staticmethod
     def grpo_processing(x):
-        """Convert GSM8K example to GRPO format with chat-style prompt."""
+        """Convert GSM8K example to GRPO format."""
 
         def extract_hash_answer(text):
             """Extract numerical answer from GSM8K format (#### marker)"""

@@ -1,5 +1,7 @@
 import re
 import sys
+import os
+import time
 from typing import Any, Tuple
 from settings import (
     DEBUG_EVERY,
@@ -8,6 +10,29 @@ from settings import (
     DEBUG_COMPLETION_CHARS,
     DEBUG_SHOW_FULL_PROMPT
 )
+
+
+def resolve_output_dir(cli_args):
+    if cli_args.output_dir:
+        out = cli_args.output_dir
+    else:
+        run_name = cli_args.run_name or f"{cli_args.method}_gsm8k"
+        out = os.path.join("outputs", run_name)
+
+    if os.path.exists(out):
+        out = f"{out}-{int(time.time())}"
+
+    os.makedirs(out, exist_ok=True)
+    return out
+
+def save_model(trainer, label):
+    is_lora = hasattr(trainer.model, "save_pretrained") and hasattr(trainer.model, "peft_config")
+    out_dir = os.path.join(trainer.args.output_dir, f"{'adapter' if is_lora else 'checkpoint'}-{label}")
+    trainer.model.save_pretrained(out_dir)
+    trainer.processing_class.save_pretrained(out_dir)
+    print(f"{'Adapter' if is_lora else 'Model'} saved to {out_dir}")
+
+
 
 def split(text: str) -> Tuple[str, str]:
 

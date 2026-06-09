@@ -26,7 +26,7 @@ GRPO_CONFIG = dict(
 )
 
 
-LORA = LoraConfig(
+LORA_CONFIG = LoraConfig(
     r=16,                              # Rank: adaptation capacity (16 good for reasoning tasks)
     lora_alpha=32,                     # Scaling factor (typically 2x rank)
     target_modules="all-linear", # Focus on attention query/value for reasoning
