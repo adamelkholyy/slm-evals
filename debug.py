@@ -1,28 +1,11 @@
-import sys
+import logging
 from typing import Any
 
 from settings import DEBUG_EVERY, DEBUG_N
 
-# TODO: REFACTOR! Including logging instead of eprint
-
-def is_rank0() -> bool:
-    """Best-effort 'rank0 only' gate for torchrun/accelerate."""
-    try:
-        import torch.distributed as dist
-
-        if dist.is_initialized():
-            return dist.get_rank() == 0
-    except ImportError:
-        pass
-    return True
-
+logger = logging.getLogger(__name__)
 
 _LAST_DEBUG_STEP: int | None = None
-
-
-def _eprint(*args, **kwargs):
-    """Print to stderr so output lands in the SLURM .err file."""
-    print(*args, file=sys.stderr, **kwargs)
 
 
 def maybe_debug_print_grpo(
@@ -35,44 +18,36 @@ def maybe_debug_print_grpo(
     scores: list[Any] | None = None,
     header: str = "GRPO DEBUG",
 ) -> None:
-    """Periodically print samples to stderr (rank0 only)."""
+    """Periodically log a sample of GRPO rollouts.
 
+    Emits every DEBUG_EVERY steps, capped at DEBUG_N samples per call.
+    No-ops when DEBUG_EVERY <= 0 or the trainer state is unavailable.
+    """
     global _LAST_DEBUG_STEP
-
-    if not is_rank0():
-        return
 
     if trainer_state is None or not hasattr(trainer_state, "global_step"):
         return
 
     step = int(trainer_state.global_step)
-    if DEBUG_EVERY <= 0 or (step % DEBUG_EVERY) != 0:
+    if DEBUG_EVERY <= 0 or step % DEBUG_EVERY != 0 or step == _LAST_DEBUG_STEP:
         return
 
-    if _LAST_DEBUG_STEP == step:
-        return
     _LAST_DEBUG_STEP = step
 
-    n = max(1, DEBUG_N)
+    n = min(max(1, DEBUG_N), len(responses))
+    sep = "=" * 100
 
-    _eprint("\n" + "=" * 100)
-    _eprint(
-        f"[{header}] global_step={step} (printing {min(n, len(responses))} sample(s))"
-    )
+    lines = [f"\n{sep}", f"[{header}] global_step={step} (printing {n} sample(s))"]
+    for i in range(n):
+        lines += [
+            f"\n[PROMPT]\n{prompts[i]}",
+            f"\n[COMPLETION]\n{responses[i]}",
+            f"\n[GT_ANSWER] {answers[i]!r}",
+        ]
+        if extracted is not None:
+            lines.append(f"[EXTRACTED_GUESS] {extracted[i]!r}")
+        if scores is not None:
+            lines.append(f"[REWARD] {scores[i]}")
+    lines.append(f"{sep}\n")
 
-    for i in range(min(n, len(responses))):
-        p = prompts[i]
-        r = responses[i]
-        a = answers[i]
-        g = None if extracted is None else extracted[i]
-        sc = None if scores is None else scores[i]
-
-        _eprint("\n[PROMPT]\n" + str(p))
-        _eprint("\n[COMPLETION]\n" + str(r)),
-        _eprint(f"\n[GT_ANSWER] {a!r}")
-        if g is not None:
-            _eprint(f"[EXTRACTED_GUESS] {g!r}")
-        if sc is not None:
-            _eprint(f"[REWARD] {sc}")
-
-    _eprint("=" * 100 + "\n")
+    logger.debug("\n".join(lines))

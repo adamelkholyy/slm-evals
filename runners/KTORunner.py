@@ -8,6 +8,12 @@ from runners.PostTrainer import PostTrainer
 from settings import COMMON, system_prompt
 from utils import save_model, split_prompt_answer
 
+# Matches a GSM8K final-answer marker and the number that follows it.
+_HASH_RE = re.compile(r"(####\s*)([-+]?\d[\d,\.]*)")
+
+# Matches any number (used as fallback when no #### marker is present).
+_NUM_RE = re.compile(r"[-+]?\d[\d,\.]*")
+
 
 class KTORunner(PostTrainer):
 
@@ -15,8 +21,13 @@ class KTORunner(PostTrainer):
         ds = self.load_gsm8k()
         ds = self.convert_to_kto(ds)
 
-        # get frozen reference model
-        ref_model = AutoModelForCausalLM.from_pretrained(args.model)
+        # The reference model must stay frozen and match the training model's
+        # dtype/device layout so the KL term is computed consistently.
+        ref_model = AutoModelForCausalLM.from_pretrained(
+            args.model,
+            torch_dtype=model.dtype,
+            device_map=model.hf_device_map if hasattr(model, "hf_device_map") else "auto",
+        )
         for param in ref_model.parameters():
             param.requires_grad = False
 
@@ -37,73 +48,74 @@ class KTORunner(PostTrainer):
         trainer.train()
         save_model(trainer, "kto")
 
-    # TODO: Check, refactor, re-comment
     def convert_to_kto(self, ds: Dataset) -> Dataset:
-        """Convert into KTO format (prompt, completion, label).
+        """Convert GSM8K examples into KTO format (prompt, completion, label).
 
-        Keep prompt formatting consistent with SFT/GRPO:
-        <system_prompt>\n\nQuestion: ...\nAnswer:
+        Each source example produces two rows:
+          - label=True  with the gold completion
+          - label=False with a perturbed completion (correct reasoning, wrong answer)
 
-        Completions are the GSM8K answer strings (which include the '#### <final>' marker).
+        Prompt format matches SFT/GRPO:
+            <system_prompt>\\n\\nQuestion: ...\\nAnswer:
         """
         rows = []
         for x in ds:
             prompt_raw, answer = split_prompt_answer(x["text"])
-
             prompt = f"{system_prompt}\n\n{prompt_raw.strip()}\nAnswer:"
 
-            # Ensure the completion begins with a space (nice tokenization; matches SFT path).
+            # Leading space for clean tokenization boundary (matches SFT path).
             completion_pos = answer if answer.startswith(" ") else f" {answer}"
-            completion_neg = self.get_negative_example(completion_pos)
+            completion_neg = self._get_negative_example(completion_pos)
 
             rows.append({"prompt": prompt, "completion": completion_pos, "label": True})
-            rows.append(
-                {"prompt": prompt, "completion": completion_neg, "label": False}
-            )
+            rows.append({"prompt": prompt, "completion": completion_neg, "label": False})
+
         return Dataset.from_list(rows)
 
     @staticmethod
-    def get_negative_example(answer: str) -> str:
-        """Create a well-formed but incorrect completion.
+    def _get_negative_example(answer: str) -> str:
+        """Return a plausible but incorrect completion for KTO negative training.
 
-        We keep the gold reasoning text but perturb the final GSM8K marker:
-        '#### <answer>' -> '#### <answer+1>' (or a numeric +1 for floats).
+        Strategy: preserve the full reasoning chain and perturb only the final
+        numeric answer by +1. This produces harder negatives than random noise
+        while keeping the text otherwise valid.
 
-        This yields a harder/realistic negative than string reversal.
+        Perturbation priority:
+          1. Last '#### <n>' marker (canonical GSM8K format).
+          2. Last bare number anywhere in the string (rare fallback).
+          3. Append '#### 0' when no number is found at all.
         """
 
-        # Prefer the last occurrence to avoid cases where the model gives an answer then keeps talking.
-        hash_re = re.compile(r"(####\s*)([-+]?\d[\d,\.]*)")
-        matches = list(hash_re.finditer(answer))
-        if matches:
-            m = matches[-1]
-            num_str = m.group(2)
-            clean = num_str.replace(",", "").strip()
-            try:
-                if re.fullmatch(r"[-+]?\d+", clean):
-                    wrong = str(int(clean) + 1)
-                else:
-                    wrong = str(float(clean) + 1.0)
-            except ValueError:
-                wrong = "0"
+        hash_matches = list(_HASH_RE.finditer(answer))
+        if hash_matches:
+            m = hash_matches[-1]
+            wrong = _perturb_number(m.group(2))
+            return answer[: m.start(2)] + wrong + answer[m.end(2) :]
 
-            start, end = m.span(2)
-            return answer[:start] + wrong + answer[end:]
+        num_matches = list(_NUM_RE.finditer(answer))
+        if num_matches:
+            m = num_matches[-1]
+            wrong = _perturb_number(m.group(0))
+            return answer[: m.start()] + wrong + answer[m.end() :]
 
-        # Fallback: try changing the last number anywhere.
-        any_num_re = re.compile(r"[-+]?\d[\d,\.]*(?!.*[-+]?\d)")
-        m2 = any_num_re.search(answer)
-        if m2:
-            num_str = m2.group(0)
-            clean = num_str.replace(",", "").strip()
-            try:
-                if re.fullmatch(r"[-+]?\d+", clean):
-                    wrong = str(int(clean) + 1)
-                else:
-                    wrong = str(float(clean) + 1.0)
-                return answer[: m2.start()] + wrong + answer[m2.end() :]
-            except ValueError:
-                pass
-
-        # Last-resort fallback: append a clearly wrong final line.
         return answer.rstrip() + "\n#### 0"
+
+
+def _perturb_number(num_str: str) -> str:
+    """Increment a numeric string by 1, preserving integer vs float type.
+
+    Commas are stripped for parsing; the result is a plain decimal string.
+    Returns '0' on parse error.
+
+    Examples:
+        '42'     -> '43'
+        '3.5'    -> '4.5'
+        '1,000'  -> '1001'
+    """
+    clean = num_str.replace(",", "")
+    try:
+        if re.fullmatch(r"[-+]?\d+", clean):
+            return str(int(clean) + 1)
+        return str(float(clean) + 1.0)
+    except ValueError:
+        return "0"
