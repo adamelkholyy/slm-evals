@@ -1,3 +1,5 @@
+import os
+
 from datasets import Dataset, load_dataset
 from trl import GRPOConfig, GRPOTrainer
 
@@ -22,7 +24,11 @@ class GRPORunner(PostTrainer):
         ds = self.load_gsm8k()
         ds = self.convert_to_grpo(ds)
 
-        config = dict(GRPO_CONFIG, output_dir=args.output_dir)
+        config = dict(
+            GRPO_CONFIG,
+            output_dir=args.output_dir,
+        )
+        self.print_config(config)
 
         trainer = GRPOTrainer(
             model=model,

@@ -1,6 +1,7 @@
 from datasets import Dataset, load_dataset
 from trl import SFTConfig, SFTTrainer
 
+from runners.WandbCallback import WandbCallback
 from runners.PostTrainer import PostTrainer
 from settings import COMMON, system_prompt
 from utils import save_model
@@ -26,13 +27,18 @@ class SFTRunner(PostTrainer):
         return {"prompt": prompt, "completion": completion}
 
     def run(self, model, _tokenizer, args):
- 
         ds = self.load_gsm8k()
-        config = dict(COMMON, output_dir=args.output_dir)
+
+        config = dict(
+            COMMON,
+            output_dir=args.output_dir,
+        )
+        self.print_config(config)
 
         trainer = SFTTrainer(
             model=model,
             train_dataset=ds,
+            #callbacks=[WandbCallback()],
             args=SFTConfig(**config),
         )
         trainer.train()

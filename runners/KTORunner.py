@@ -4,6 +4,7 @@ from datasets import Dataset
 from transformers import AutoModelForCausalLM
 from trl import KTOConfig, KTOTrainer
 
+from runners.WandbCallback import WandbCallback
 from runners.PostTrainer import PostTrainer
 from settings import COMMON, system_prompt
 from utils import save_model, split_prompt_answer
@@ -34,15 +35,17 @@ class KTORunner(PostTrainer):
         config = dict(
             COMMON,
             output_dir=args.output_dir,
-            remove_unused_columns=False,
             beta=0.1,
+            remove_unused_columns=False,
         )
+        self.print_config(config)
 
         trainer = KTOTrainer(
             model=model,
             train_dataset=ds,
             ref_model=ref_model,
             processing_class=tokenizer,
+            callbacks=[WandbCallback()],
             args=KTOConfig(**config),
         )
         trainer.train()

@@ -1,5 +1,6 @@
 import argparse
 import time
+import wandb
 
 from peft import get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -17,7 +18,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--run_name",
-    default=None,
+    default="run",
     help="Run name used to form output dir (default: <method>_<task>).",
 )
 parser.add_argument(
@@ -29,6 +30,12 @@ args = parser.parse_args()
 
 
 if __name__ == "__main__":
+    run = wandb.init(
+        entity="adamelkholy25-university-of-cambridge",
+        project="dissertation",
+        name=args.run_name
+    )
+
     args.output_dir = resolve_output_dir(args)
 
     match args.method:

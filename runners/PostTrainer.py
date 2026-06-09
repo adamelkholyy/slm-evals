@@ -17,7 +17,15 @@ class PostTrainer:
         # single text field used for DPO, KTO, RewardTrainer
         return {"text": f"Question: {x['question']}\nAnswer: {x['answer']}"}
 
+    @staticmethod
+    def print_config(config: dict):
+        print("=" * 100)
+        for key, value in config.items():
+            print(f"{key}: {value}")
+        print("=" * 100)
+
     @abstractmethod
     def run(self, model, tokenizer, args):
         pass
 
+    

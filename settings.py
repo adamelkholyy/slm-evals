@@ -5,13 +5,16 @@ system_prompt = (
 )
 
 COMMON = dict(
-    per_device_train_batch_size=4,
-    gradient_accumulation_steps=16,
+    per_device_train_batch_size=4, # 4 for SFT
+    gradient_accumulation_steps=8,
     gradient_checkpointing=True,
-    learning_rate=2e-5,
-    num_train_epochs=1,
+    learning_rate=2e-5, # 2 e-5 for SFT
+    num_train_epochs=1.5, # 3 for SFT
     logging_steps=10,
     save_steps=500,
+    max_steps=1200, # unbounded for SFT
+    max_grad_norm=0.1, # no max grad for SFT
+    report_to=["wandb"],
     bf16=True,
 )
 
@@ -20,12 +23,13 @@ GRPO_CONFIG = dict(
     per_device_train_batch_size=2,  # Small batch for GPU memory constraints
     gradient_accumulation_steps=8,  # Effective batch size = 2 * 8 = 16
     gradient_checkpointing=True,
-    max_completion_length=1024,  # room for step-by-step reasoning
-    max_steps=500,  # increase further (2k-20k) for a full run
+    max_completion_length=512,  # room for step-by-step reasoning
+    max_steps=1500,  # increase further (2k-20k) for a full run
     num_train_epochs=1,
-    logging_steps=1,  # log metrics every step for close monitoring
+    logging_steps=10,  # log metrics every step for close monitoring
     save_steps=500,
     bf16=True,  # mixed precision
+    report_to=["wandb"],
     max_grad_norm=0.1,  # aggressive gradient clipping for stable training
 )
 

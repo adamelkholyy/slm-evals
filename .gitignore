@@ -14,3 +14,9 @@ podman/
 .gitconfig
 hf/
 runners/__pycache__/
+.wandb/
+.nv/
+.config/
+.cache/
+.netrc
+wandb/
