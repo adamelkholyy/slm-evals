@@ -20,3 +20,5 @@ runners/__pycache__/
 .cache/
 .netrc
 wandb/
+flamingo.sh
+.vscode
