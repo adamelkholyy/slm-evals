@@ -34,6 +34,8 @@ class KTORunner(PostTrainer):
 
         config = dict(
             COMMON,
+            num_epochs=1.5, # KTO specific
+            max_steps=1200, # KTO specific
             output_dir=args.output_dir,
             beta=0.1,
             remove_unused_columns=False,

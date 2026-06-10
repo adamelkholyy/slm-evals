@@ -20,14 +20,48 @@ source ./trl/trl-venv/bin/activate
 
 cd /rds/user/ae581/hpc-work/diss
 
-echo Evaluating base Qwen2.5-3B-Instruct on BLiMP...
 
-lm_eval --model hf \
-    --model_args pretrained=Qwen/Qwen2.5-3B-Instruct,trust_remote_code=True \
-    --tasks blimp \
-    --device cuda:0 \
-    --batch_size 8 \
-    --output_path ./results/qwen3b_base_blimp
+
+DS=gsm8k
+echo Evaluating $DS...
+
+# # # baseline benchmark
+# CUDA_VISIBLE_DEVICES=0 lm_eval --model hf \
+#     --model_args pretrained=Qwen/Qwen2.5-3B,trust_remote_code=True \
+#     --tasks $DS \
+#     --device cuda:0 \
+#     --batch_size 8 \
+#     --output_path ./benchmarks/qwen3b_base_$DS
+
+# # # kto benchmark
+CUDA_VISIBLE_DEVICES=0 lm_eval \
+  --model hf \
+  --model_args pretrained=Qwen/Qwen2.5-3B,peft=./outputs/kto_run_qwen3b/adapter-kto \
+  --tasks $DS \
+  --device cuda:0 \
+  --output_path ./benchmarks/qwen3b_kto_$DS \
+  --batch_size auto
+
+# # # sft benchmark
+CUDA_VISIBLE_DEVICES=0 lm_eval \
+  --model hf \
+  --model_args pretrained=Qwen/Qwen2.5-3B,peft=./outputs/sft_run_qwen3b/adapter-sft \
+  --tasks $DS \
+  --device cuda:0 \
+  --output_path ./benchmarks/qwen3b_sft_$DS \
+  --batch_size auto
+
+
+# # # grpo benchmark
+lm_eval \
+  --model hf \
+  --model_args pretrained=outputs/grpo_run_qwen3b/checkpoint-grpo,dtype="bfloat16" \
+  --tasks $DS \
+  --output_path ./benchmarks/qwen3b_grpo_$DS \
+  --device cuda:0 \
+  --batch_size auto
+
+
 
 echo Job complete
 

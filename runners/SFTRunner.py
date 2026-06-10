@@ -31,6 +31,7 @@ class SFTRunner(PostTrainer):
 
         config = dict(
             COMMON,
+            num_epochs=3, # STO specific
             output_dir=args.output_dir,
         )
         self.print_config(config)

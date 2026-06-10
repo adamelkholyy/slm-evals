@@ -22,3 +22,6 @@ runners/__pycache__/
 wandb/
 flamingo.sh
 .vscode
+*.csv
+benchmarks/
+analysis.ipynb

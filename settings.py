@@ -5,15 +5,14 @@ system_prompt = (
 )
 
 COMMON = dict(
-    per_device_train_batch_size=4, # 4 for SFT
+    per_device_train_batch_size=4, 
     gradient_accumulation_steps=8,
     gradient_checkpointing=True,
-    learning_rate=2e-5, # 2 e-5 for SFT
-    num_train_epochs=1.5, # 3 for SFT
+    learning_rate=2e-5, 
+    num_train_epochs=1.5, 
     logging_steps=10,
     save_steps=500,
-    max_steps=1200, # unbounded for SFT
-    max_grad_norm=0.1, # no max grad for SFT
+    max_grad_norm=0.1, 
     report_to=["wandb"],
     bf16=True,
 )

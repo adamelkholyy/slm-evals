@@ -7,7 +7,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from settings import LORA_CONFIG
 from utils import resolve_output_dir
-from runners import GRPORunner, KTORunner, SFTRunner
+
+from runners.GRPORunner import GRPORunner
+from runners.KTORunner import KTORunner
+from runners.SFTRunner import SFTRunner
 
 
 parser = argparse.ArgumentParser()
@@ -39,9 +42,9 @@ if __name__ == "__main__":
     args.output_dir = resolve_output_dir(args)
 
     match args.method:
-        case "sft": post_trainer = SFTRunner.SFTRunner()
-        case "grpo": post_trainer = GRPORunner.GRPORunner()
-        case "kto": post_trainer = KTORunner.KTORunner()
+        case "sft": post_trainer = SFTRunner()
+        case "grpo": post_trainer = GRPORunner()
+        case "kto": post_trainer = KTORunner()
 
     print(
         f"Benchmarking {args.model}, method={args.method}, task=Gsm8k\n"
