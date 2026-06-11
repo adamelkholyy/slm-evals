@@ -1,13 +1,13 @@
 import re
 
-from datasets import Dataset
+from datasets import Dataset, load_dataset
 from transformers import AutoModelForCausalLM
 from trl import KTOConfig, KTOTrainer
 
 from runners.WandbCallback import WandbCallback
 from runners.PostTrainer import PostTrainer
 from settings import COMMON, system_prompt
-from utils import save_model, split_prompt_answer
+from utils import save_model, strip_calculator_annotations
 
 # Matches a GSM8K final-answer marker and the number that follows it.
 _HASH_RE = re.compile(r"(####\s*)([-+]?\d[\d,\.]*)")
@@ -34,7 +34,7 @@ class KTORunner(PostTrainer):
 
         config = dict(
             COMMON,
-            num_epochs=1.5, # KTO specific
+            num_train_epochs=1.5, # KTO specific
             max_steps=1200, # KTO specific
             output_dir=args.output_dir,
             beta=0.1,
@@ -53,23 +53,17 @@ class KTORunner(PostTrainer):
         trainer.train()
         save_model(trainer, "kto")
 
+    def load_gsm8k(self) -> Dataset:
+        ds = load_dataset("openai/gsm8k", "main", split="train")
+        cols_to_remove = [c for c in ds.column_names if c not in ("question", "answer")]
+        return ds.remove_columns(cols_to_remove)
+
     def convert_to_kto(self, ds: Dataset) -> Dataset:
-        """Convert GSM8K examples into KTO format (prompt, completion, label).
-
-        Each source example produces two rows:
-          - label=True  with the gold completion
-          - label=False with a perturbed completion (correct reasoning, wrong answer)
-
-        Prompt format matches SFT/GRPO:
-            <system_prompt>\\n\\nQuestion: ...\\nAnswer:
-        """
         rows = []
         for x in ds:
-            prompt_raw, answer = split_prompt_answer(x["text"])
-            prompt = f"{system_prompt}\n\n{prompt_raw.strip()}\nAnswer:"
-
-            # Leading space for clean tokenization boundary (matches SFT path).
-            completion_pos = answer if answer.startswith(" ") else f" {answer}"
+            prompt = f"{x['question']}\n{system_prompt}"
+            answer = strip_calculator_annotations(x["answer"])
+            completion_pos = f" {answer}"
             completion_neg = self._get_negative_example(completion_pos)
 
             rows.append({"prompt": prompt, "completion": completion_pos, "label": True})

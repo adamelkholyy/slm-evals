@@ -12,7 +12,6 @@ COMMON = dict(
     num_train_epochs=1.5, 
     logging_steps=10,
     save_steps=500,
-    max_grad_norm=0.1, 
     report_to=["wandb"],
     bf16=True,
 )

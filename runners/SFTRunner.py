@@ -1,10 +1,9 @@
 from datasets import Dataset, load_dataset
 from trl import SFTConfig, SFTTrainer
 
-from runners.WandbCallback import WandbCallback
 from runners.PostTrainer import PostTrainer
 from settings import COMMON, system_prompt
-from utils import save_model
+from utils import save_model, strip_calculator_annotations
 
 
 class SFTRunner(PostTrainer):
@@ -22,8 +21,9 @@ class SFTRunner(PostTrainer):
     @staticmethod
     def format_gsm8k(x) -> dict:
         """Format as prompt/completion for completion-only SFT."""
-        prompt = f"{system_prompt}\n\nQuestion: {x['question']}\nAnswer:"
-        completion = f" {x['answer']}"  # leading space so it tokenises nicely
+        prompt = f"{x['question']}\n{system_prompt}"
+        answer = strip_calculator_annotations(x["answer"])
+        completion = f" {answer}"  # leading space so it tokenises nicely
         return {"prompt": prompt, "completion": completion}
 
     def run(self, model, _tokenizer, args):
@@ -31,7 +31,7 @@ class SFTRunner(PostTrainer):
 
         config = dict(
             COMMON,
-            num_epochs=3, # STO specific
+            num_train_epochs=3, # STO specific
             output_dir=args.output_dir,
         )
         self.print_config(config)

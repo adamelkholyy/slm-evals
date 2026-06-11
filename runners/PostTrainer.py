@@ -1,7 +1,7 @@
 from abc import abstractmethod
 
 from datasets import Dataset, load_dataset
-
+from utils import strip_calculator_annotations
 
 class PostTrainer:
 
@@ -15,7 +15,8 @@ class PostTrainer:
     @staticmethod
     def format_gsm8k(x: dict) -> dict:
         # single text field used for DPO, KTO, RewardTrainer
-        return {"text": f"Question: {x['question']}\nAnswer: {x['answer']}"}
+        answer = strip_calculator_annotations(x["answer"])
+        return {"text": f"Question: {x['question']}\nAnswer: {answer}"}
 
     @staticmethod
     def print_config(config: dict):

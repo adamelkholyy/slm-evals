@@ -52,6 +52,17 @@ def save_model(trainer, label):
     print(f"{'Adapter' if is_lora else 'Model'} saved to {out_dir}")
 
 
+def strip_calculator_annotations(text: str) -> str:
+    """Remove GSM8K-style calculator annotations (e.g. '<<48/2=24>>').
+
+    The raw GSM8K 'main' split embeds these inline within the reasoning
+    (e.g. "...sold 48/2 = <<48/2=24>>24 clips..."). They aren't natural
+    language and training on them as-is can push generations toward an
+    unnatural format, which we've seen hurts flexible-match extraction at
+    eval time. This strips them while leaving the surrounding text intact.
+    """
+    return re.sub(r"<<[^>]*>>", "", text)
+
 def split_prompt_answer(text: str) -> Tuple[str, str]:
 
     split_pattern = re.compile(r"(\nAnswer:|\nCorrect:|\nSolution\n|\nEndings:\n)")
